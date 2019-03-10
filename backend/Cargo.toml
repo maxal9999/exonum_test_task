@@ -1,0 +1,31 @@
+[package]
+name = "exonum-test-task"
+version = "0.1.0"
+authors = ["AS.Maksimovskiy"]
+readme = "README.md"
+keywords = ["exonum", "blockchain", "example"]
+categories = ["rust-patterns", "development-tools::testing"]
+description = "My implementation of multisignature transaction functionality."
+
+[dependencies]
+exonum = { version = "0.10.3", path = "../../exonum/exonum/exonum" }
+exonum-derive = { version = "0.10.0", path = "../../exonum/exonum/components/derive" }
+exonum-configuration = { version = "0.10.2", path = "../../exonum/exonum/services/configuration" }
+serde = "1.0.0"
+serde_derive = "1.0.0"
+failure = "0.1.5"
+protobuf = "2.2.0"
+
+[dev-dependencies]
+exonum-testkit = { version = "0.10.1", path = "../../exonum/exonum/testkit" }
+serde_json = "1.0.0"
+pretty_assertions = "0.5.1"
+assert_matches = "1.2.0"
+hex = "0.3.2"
+
+[build-dependencies]
+exonum-build = { version = "0.10.0", path = "../../exonum/exonum/components/build" }
+
+[features]
+default = ["with-serde"]
+with-serde = []
