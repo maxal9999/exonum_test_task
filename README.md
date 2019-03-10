@@ -66,3 +66,5 @@ pub struct AcceptMultisign {
 1. Fields "pending_balance" and "pending_txs" are not thread safety. It is necessary to wrap them in std::sync::Mutex.
 
 2. There is no protection that the initiator of the multisign transaction will participate in the accept transaction.
+
+3. Add unit tests for the multisignature transfer.
