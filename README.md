@@ -62,4 +62,7 @@ pub struct AcceptMultisign {
     pub seed: u64, /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
 }
 
- 
+## TODO list
+1. Fields "pending_balance" and "pending_txs" are not thread safety. It is necessary to wrap them in std::sync::Mutex.
+
+2. There is no protection that the initiator of the multisign transaction will participate in the accept transaction.
