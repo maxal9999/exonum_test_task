@@ -14,11 +14,11 @@
 
 syntax = "proto3";
 
-package exonum.examples.cryptocurrency_advanced;
+package exonum_test_task;
 
 import "helpers.proto";
 
-/// Transfer `amount` of the currency from one wallet to another.
+// Transfer `amount` of the currency from one wallet to another.
 message Transfer {
   // `PublicKey` of receiver's wallet.
   exonum.PublicKey to = 1;
@@ -26,6 +26,34 @@ message Transfer {
   uint64 amount = 2;
   // Auxiliary number to guarantee non-idempotence of transactions.
   uint64 seed = 3;
+}
+
+// Multisignature transfer `amount` of the currency from one multisig wallet to another.
+message TransferMultisign {
+  // `PublicKey` of multisign sender's wallet.
+  exonum.PublicKey from = 1;
+  // `PublicKey` of receiver's wallet.
+  exonum.PublicKey to = 2;
+  // Approvers of this transfer
+  repeated exonum.PublicKey approvers = 3;
+  // Amount of currency to transfer.
+  uint64 amount = 4;
+  // Auxiliary number to guarantee non-idempotence of transactions.
+  uint64 seed = 5;
+}
+
+// Accept transfer for multisignature transfer.
+message AcceptMultisign {
+  // Hash of the accepted transfer.
+  exonum.Hash tx_hash = 1;
+  // `PublicKey` of multisign sender's wallet.
+  exonum.PublicKey from = 2;
+  // `PublicKey` of receiver's wallet.
+  exonum.PublicKey to = 3;
+  // Approvers of this transfer
+  repeated exonum.PublicKey approvers = 4;
+  // Auxiliary number to guarantee non-idempotence of transactions.
+  uint64 seed = 5;
 }
 
 // Issue `amount` of the currency to the `wallet`.
@@ -50,8 +78,12 @@ message Wallet {
   string name = 2;
   // Current balance of the wallet.
   uint64 balance = 3;
+  // Current pending balance
+  uint64 pending_balance = 4;
+  // Pending txs
+  repeated exonum.Hash pending_txs = 5;
   // Length of the transactions history.
-  uint64 history_len = 4;
+  uint64 history_len = 6;
   // `Hash` of the transactions history.
-  exonum.Hash history_hash = 5;
+  exonum.Hash history_hash = 7;
 }

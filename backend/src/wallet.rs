@@ -24,10 +24,17 @@ use super::proto;
 pub struct Wallet {
     /// `PublicKey` of the wallet.
     pub pub_key: PublicKey,
+    /// Linked multisig wallet.
+    /// TODO. Some decision to link single wallet and multisign wallet
+    //pub multisig_wallet: PublicKey,
     /// Name of the wallet.
     pub name: String,
     /// Current balance of the wallet.
     pub balance: u64,
+    /// Current pending balance
+    pub pending_balance: u64,
+    /// Pending txs
+    pub pending_txs: Vec<Hash>,
     /// Length of the transactions history.
     pub history_len: u64,
     /// `Hash` of the transactions history.
@@ -40,13 +47,18 @@ impl Wallet {
         &pub_key: &PublicKey,
         name: &str,
         balance: u64,
+        pending_balance: u64,
+        pending_txs_list: &[Hash],
         history_len: u64,
         &history_hash: &Hash,
     ) -> Self {
+        let pending_txs = pending_txs_list.to_vec();
         Self {
             pub_key,
             name: name.to_owned(),
             balance,
+            pending_balance,
+            pending_txs,
             history_len,
             history_hash,
         }
@@ -57,8 +69,52 @@ impl Wallet {
             &self.pub_key,
             &self.name,
             balance,
+            self.pending_balance,
+            &self.pending_txs,
             self.history_len + 1,
             history_hash,
+        )
+    }
+    /// Returns a copy of this wallet with updated pending balance.
+    pub fn set_pending_balance(self, balance: u64) -> Self {
+        Self::new(
+            &self.pub_key,
+            &self.name,
+            self.balance,
+            balance,
+            &self.pending_txs,
+            self.history_len,
+            &self.history_hash,
+        )
+    }
+    /// Returns a copy of this wallet with updated pending_txs.
+    pub fn add_pending_tx(self, tx_hash: &Hash) -> Self {
+        let mut pending_txs = self.pending_txs;
+        pending_txs.push(*tx_hash);
+        Self::new(
+            &self.pub_key,
+            &self.name,
+            self.balance,
+            self.pending_balance,
+            &pending_txs,
+            self.history_len,
+            &self.history_hash,
+        )
+    }
+    /// Returns a copy of this wallet with updated pending_txs.
+    pub fn delete_pending_tx(self, tx_hash: &Hash) -> Self {
+        let mut pending_txs = self.pending_txs;
+        if let Some(index) = pending_txs.iter().position(|x| *x == *tx_hash) {
+            pending_txs.remove(index);
+        }
+        Self::new(
+            &self.pub_key,
+            &self.name,
+            self.balance,
+            self.pending_balance,
+            &pending_txs,
+            self.history_len,
+            &self.history_hash,
         )
     }
 }

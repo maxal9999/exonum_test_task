@@ -107,13 +107,43 @@ impl<'a> Schema<&'a mut Fork> {
         self.wallets_mut().put(&wallet.pub_key, wallet.clone());
     }
 
+    /// Decrease pending balance of the wallet.
+    ///
+    /// Panics if there is no wallet with given public key.
+    pub fn decrease_wallet_pending_balance(&mut self, wallet: Wallet, amount: u64) {
+        let wallet = {
+            let balance = wallet.balance;
+            wallet.set_pending_balance(balance - amount)
+        };
+        self.wallets_mut().put(&wallet.pub_key, wallet.clone());
+    }
+
+    /// Add pending transfer to multisign wallet.
+    ///
+    /// Panics if there is no wallet with given public key.
+    pub fn add_tx_to_wallet(&mut self, wallet: Wallet, tx_hash: &Hash) -> Wallet {
+        let wallet = wallet.add_pending_tx(tx_hash);
+        self.wallets_mut().put(&wallet.pub_key, wallet.clone());
+        wallet
+    }
+
+    /// Remove pending transfer from multisign wallet.
+    ///
+    /// Panics if there is no wallet with given public key.
+    pub fn remove_tx_from_wallet(&mut self, wallet: Wallet, tx_hash: &Hash) -> Wallet {
+        let wallet = wallet.delete_pending_tx(tx_hash);
+        self.wallets_mut().put(&wallet.pub_key, wallet.clone());
+        wallet
+    }
+
     /// Create new wallet and append first record to its history.
     pub fn create_wallet(&mut self, key: &PublicKey, name: &str, transaction: &Hash) {
         let wallet = {
             let mut history = self.wallet_history_mut(key);
             history.push(*transaction);
             let history_hash = history.merkle_root();
-            Wallet::new(key, name, INITIAL_BALANCE, history.len(), &history_hash)
+            let pending_txs = Vec::new();
+            Wallet::new(key, name, INITIAL_BALANCE, INITIAL_BALANCE, &pending_txs, history.len(), &history_hash)
         };
         self.wallets_mut().put(key, wallet);
     }

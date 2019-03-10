@@ -20,7 +20,7 @@
 
 use exonum::{
     blockchain::{ExecutionError, ExecutionResult, Transaction, TransactionContext},
-    crypto::{PublicKey, SecretKey},
+    crypto::{Hash, PublicKey, SecretKey},
     messages::{Message, RawTransaction, Signed},
 };
 
@@ -80,6 +80,42 @@ pub struct Transfer {
     pub seed: u64,
 }
 
+/// Multisignature transfer `amount` of the currency from one multisig wallet to another.
+#[derive(Clone, Debug, ProtobufConvert)]
+#[exonum(pb = "proto::TransferMultisign", serde_pb_convert)]
+pub struct TransferMultisign {
+    /// `PublicKey` of multisign sender's wallet.
+    pub from: PublicKey,
+    /// `PublicKey` of receiver's wallet.
+    pub to: PublicKey,
+    /// Approvers of this transfer.
+    pub approvers: Vec<PublicKey>,
+    /// Amount of currency to transfer.
+    pub amount: u64,
+    /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
+    ///
+    /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
+    pub seed: u64,
+}
+
+/// Accept transfer for multisignature transfer.
+#[derive(Clone, Debug, ProtobufConvert)]
+#[exonum(pb = "proto::AcceptMultisign", serde_pb_convert)]
+pub struct AcceptMultisign {
+    /// Hash of the accepted transfer.
+    pub tx_hash: Hash,
+    /// `PublicKey` of multisign sender's wallet.
+    pub from: PublicKey,
+    /// `PublicKey` of receiver's wallet.
+    pub to: PublicKey,
+    /// Approvers of this transfer
+    pub approvers: Vec<PublicKey>,
+    /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
+    ///
+    /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
+    pub seed: u64,
+}
+
 /// Issue `amount` of the currency to the `wallet`.
 #[derive(Serialize, Deserialize, Clone, Debug, ProtobufConvert)]
 #[exonum(pb = "proto::Issue")]
@@ -105,6 +141,10 @@ pub struct CreateWallet {
 pub enum WalletTransactions {
     /// Transfer tx.
     Transfer(Transfer),
+    /// Multisign transfer tx.
+    TransferMultisign(TransferMultisign),
+    /// Accept multisign transfer
+    AcceptMultisign(AcceptMultisign),
     /// Issue tx.
     Issue(Issue),
     /// CreateWallet tx.
@@ -143,6 +183,48 @@ impl Transfer {
     }
 }
 
+impl TransferMultisign {
+    #[doc(hidden)]
+    pub fn sign(
+        pk: &PublicKey,
+        &from: &PublicKey,
+        &to: &PublicKey,
+        ref users: &Vec<PublicKey>,
+        amount: u64,
+        seed: u64,
+        sk: &SecretKey,
+    ) -> Signed<RawTransaction> {
+        let approvers = users.to_vec();
+        Message::sign_transaction(
+            Self { from, to, approvers, amount, seed },
+            CRYPTOCURRENCY_SERVICE_ID,
+            *pk,
+            sk,
+        )
+    }
+}
+
+impl AcceptMultisign {
+    #[doc(hidden)]
+    pub fn sign(
+        pk: &PublicKey,
+        &tx_hash: &Hash,
+        &from: &PublicKey,
+        &to: &PublicKey,
+        ref users: &Vec<PublicKey>,
+        seed: u64,
+        sk: &SecretKey,
+    ) -> Signed<RawTransaction> {
+        let approvers = users.to_vec();
+        Message::sign_transaction(
+            Self { tx_hash, from, to, approvers, seed },
+            CRYPTOCURRENCY_SERVICE_ID,
+            *pk,
+            sk,
+        )
+    }
+}
+
 impl Transaction for Transfer {
     fn execute(&self, mut context: TransactionContext) -> ExecutionResult {
         let from = &context.author();
@@ -167,6 +249,75 @@ impl Transaction for Transfer {
 
         schema.decrease_wallet_balance(sender, amount, &hash);
         schema.increase_wallet_balance(receiver, amount, &hash);
+
+        Ok(())
+    }
+}
+
+impl Transaction for TransferMultisign {
+    fn execute(&self, mut context: TransactionContext) -> ExecutionResult {
+        let significant = &context.author();
+        let hash = context.tx_hash();
+
+        let mut schema = Schema::new(context.fork());
+
+        let from = &self.from;
+        let to = &self.to;
+        let amount = self.amount;
+
+        if from == to {
+            return Err(ExecutionError::new(ERROR_SENDER_SAME_AS_RECEIVER));
+        }
+
+        self.approvers.iter().find(|&&x| x == *significant).ok_or(Error::SenderNotFound)?;
+
+        let sender = schema.wallet(from).ok_or(Error::SenderNotFound)?;
+
+        schema.wallet(to).ok_or(Error::ReceiverNotFound)?;
+
+        if sender.balance < amount {
+            Err(Error::InsufficientCurrencyAmount)?
+        }
+
+        let sender = schema.add_tx_to_wallet(sender, &hash);
+        schema.decrease_wallet_pending_balance(sender, amount);
+
+        Ok(())
+    }
+}
+
+impl Transaction for AcceptMultisign {
+    fn execute(&self, mut context: TransactionContext) -> ExecutionResult {
+        let significant = &context.author();
+
+        let mut schema = Schema::new(context.fork());
+
+        let hash = &self.tx_hash;
+        let from = &self.from;
+        let to = &self.to;
+
+        if from == to {
+            return Err(ExecutionError::new(ERROR_SENDER_SAME_AS_RECEIVER));
+        }
+
+        let sender = schema.wallet(from).ok_or(Error::SenderNotFound)?;
+
+        let receiver = schema.wallet(to).ok_or(Error::ReceiverNotFound)?;
+
+        let pending_txs = sender.pending_txs.clone();
+
+        if let Some(tx_hash) = pending_txs.iter().find(|&&x| x == *hash) {
+            if let Some(_pub_key) = self.approvers.iter().find(|&&x| x == *significant) {
+                let sender = schema.remove_tx_from_wallet(sender, &tx_hash);
+                let new_amount = sender.balance - sender.pending_balance;
+                schema.decrease_wallet_balance(sender, new_amount, &tx_hash);
+                schema.increase_wallet_balance(receiver, new_amount, &tx_hash);
+                return Ok(());
+            }
+            else {
+                Err(Error::SenderNotFound)?
+            }
+        }
 
         Ok(())
     }
